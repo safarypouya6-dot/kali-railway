@@ -2,7 +2,7 @@
 set -e
 
 : "${USERNAME:=kali}"
-: "${TCP_PORT:=${RAILWAY_TCP_APPLICATION_PORT:-${PORT:-22}}}"
+: "${TCP_PORT:=2222}"
 
 if [ -z "${PASSWORD:-}" ]; then
   echo "ERROR: PASSWORD environment variable is required."
@@ -18,10 +18,7 @@ echo "${USERNAME}:${PASSWORD}" | chpasswd
 mkdir -p /run/sshd
 ssh-keygen -A
 
-# Railway TCP Proxy exposes RAILWAY_TCP_APPLICATION_PORT as the internal
-# application port configured for the proxy. Fall back to PORT, then 22.
-# Remove all existing Port/ListenAddress directives first so the base Kali
-# image cannot leave duplicate socket bindings behind.
+# Remove all existing Port/ListenAddress directives
 sed -i -E '/^[[:space:]]*#?[[:space:]]*Port[[:space:]]+/d' /etc/ssh/sshd_config
 sed -i -E '/^[[:space:]]*#?[[:space:]]*ListenAddress[[:space:]]+/d' /etc/ssh/sshd_config
 printf '\nPort %s\nListenAddress 0.0.0.0\n' "$TCP_PORT" >> /etc/ssh/sshd_config
