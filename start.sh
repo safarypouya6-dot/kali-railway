@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-: "${PORT:=22}"
 : "${USERNAME:=kali}"
+: "${TCP_PORT:=${RAILWAY_TCP_APPLICATION_PORT:-${PORT:-22}}}"
 
 if [ -z "${PASSWORD:-}" ]; then
   echo "ERROR: PASSWORD environment variable is required."
@@ -18,19 +18,13 @@ echo "${USERNAME}:${PASSWORD}" | chpasswd
 mkdir -p /run/sshd
 ssh-keygen -A
 
-# Railway supplies the public service port through PORT.
-if grep -qE '^[[:space:]]*#?[[:space:]]*Port[[:space:]]+' /etc/ssh/sshd_config; then
-  sed -i -E "s/^[[:space:]]*#?[[:space:]]*Port[[:space:]].*/Port ${PORT}/" /etc/ssh/sshd_config
-else
-  echo "Port ${PORT}" >> /etc/ssh/sshd_config
-fi
-
-# Listen on all container interfaces so Railway's TCP proxy can reach SSH.
-if grep -qE '^[[:space:]]*#?[[:space:]]*ListenAddress[[:space:]]+' /etc/ssh/sshd_config; then
-  sed -i -E 's/^[[:space:]]*#?[[:space:]]*ListenAddress[[:space:]].*/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config
-else
-  echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config
-fi
+# Railway TCP Proxy exposes RAILWAY_TCP_APPLICATION_PORT as the internal
+# application port configured for the proxy. Fall back to PORT, then 22.
+# Remove all existing Port/ListenAddress directives first so the base Kali
+# image cannot leave duplicate socket bindings behind.
+sed -i -E '/^[[:space:]]*#?[[:space:]]*Port[[:space:]]+/d' /etc/ssh/sshd_config
+sed -i -E '/^[[:space:]]*#?[[:space:]]*ListenAddress[[:space:]]+/d' /etc/ssh/sshd_config
+printf '\nPort %s\nListenAddress 0.0.0.0\n' "$TCP_PORT" >> /etc/ssh/sshd_config
 
 if grep -qE '^[[:space:]]*#?[[:space:]]*PasswordAuthentication[[:space:]]+' /etc/ssh/sshd_config; then
   sed -i -E 's/^[[:space:]]*#?[[:space:]]*PasswordAuthentication[[:space:]].*/PasswordAuthentication yes/' /etc/ssh/sshd_config
@@ -44,7 +38,6 @@ else
   echo "PermitRootLogin no" >> /etc/ssh/sshd_config
 fi
 
-# Keep normal SSH sessions reliable and allow many concurrent sessions.
 cat >> /etc/ssh/sshd_config <<'EOF'
 TCPKeepAlive yes
 ClientAliveInterval 60
@@ -53,6 +46,6 @@ MaxSessions 100
 MaxStartups 100:30:200
 EOF
 
-# Validate configuration before starting the daemon.
 /usr/sbin/sshd -t
+printf 'SSH ready on 0.0.0.0:%s\n' "$TCP_PORT"
 exec /usr/sbin/sshd -D -e
