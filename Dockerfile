@@ -2,12 +2,15 @@ FROM kalilinux/kali-rolling
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get -y install wget
+    apt-get install -y openssh-server && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN wget -qO /bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.3/ttyd.x86_64 && \
-    chmod +x /bin/ttyd
+RUN mkdir -p /run/sshd
 
-EXPOSE $PORT
-RUN echo $CREDENTIAL > /tmp/debug
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
-CMD ["/bin/bash", "-c", "/bin/ttyd -p $PORT -c $USERNAME:$PASSWORD /bin/bash"]
+# Railway supplies the actual public port through $PORT at runtime.
+EXPOSE 22
+
+CMD ["/start.sh"]
